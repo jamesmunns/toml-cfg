@@ -1,0 +1,7 @@
+# a toml-cfg file
+
+[lib-one]
+buffer_size = 4096
+
+[lib-two]
+greeting = "Guten tag!"
