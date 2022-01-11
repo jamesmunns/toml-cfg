@@ -39,6 +39,19 @@
 //!
 //! ```
 //!
+//! ## Configuration
+//!
+//! With the `TOML_CFG` environment variable is set with a value containing
+//! "require_cfg_present", the `toml-cfg` proc macro will panic if no valid config
+//! file is found. This is indicative of either no `cfg.toml` file existing in the
+//! "root project" path, or a failure to find the correct "root project" path.
+//!
+//! This failure could occur when NOT building with a typical `cargo build`
+//! environment, including with `rust-analyzer`. This is *mostly* okay, as
+//! it doesn't seem that Rust Analyzer presents this in some misleading way.
+//!
+//! If you *do* find a case where this occurs, please open an issue!
+//!
 //! ## Look at what we get!
 //!
 //! ```shell
@@ -99,12 +112,27 @@ pub fn toml_config(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let struct_defn = syn::parse::<syn::ItemStruct>(item)
         .expect("Failed to parse configuration structure!");
 
-    let root_path = find_root_path();
-    let mut cfg_path = root_path.clone();
-    cfg_path.push("cfg.toml");
+    let require_cfg_present = if let Ok(val) = env::var("TOML_CFG") {
+        val.contains("require_cfg_present")
+    } else {
+        false
+    };
 
-    let maybe_cfg = load_crate_cfg(&cfg_path);
+    let root_path = find_root_path();
+    let cfg_path = root_path.clone();
+    let cfg_path = cfg_path.as_ref().and_then(|c| {
+        let mut x = c.to_owned();
+        x.push("cfg.toml");
+        Some(x)
+    });
+
+    let maybe_cfg = cfg_path.as_ref().and_then(|c| {
+        load_crate_cfg(&c)
+    });
     let got_cfg = maybe_cfg.is_some();
+    if require_cfg_present {
+        assert!(got_cfg, "TOML_CFG=require_cfg_present set, but valid config not found!")
+    }
     let cfg = maybe_cfg
         .unwrap_or_else(|| Defn::default());
 
@@ -152,7 +180,7 @@ pub fn toml_config(_attr: TokenStream, item: TokenStream) -> TokenStream {
         .parse()
         .expect("NO NOT THE SHOUTY SNAKE");
 
-    let hack_retrigger = if got_cfg {
+    let hack_retrigger = if let Some(cfg_path) = cfg_path {
         let cfg_path = format!("{}", cfg_path.display());
         quote! {
             const _: &[u8] = include_bytes!(#cfg_path);
@@ -184,8 +212,8 @@ fn load_crate_cfg(path: &Path) -> Option<Defn> {
     parsed.crates.get(&name).cloned()
 }
 
-// From https://stackoverflow.com/q/60264534
-fn find_root_path() -> PathBuf {
+// From `
+fn find_root_path() -> Option<PathBuf> {
     // First we get the arguments for the rustc invocation
     let mut args = std::env::args();
 
@@ -198,17 +226,17 @@ fn find_root_path() -> PathBuf {
     }
 
     // Finally we clean out_dir by removing all trailing directories, until it ends with target
-    let mut out_dir = PathBuf::from(out_dir.expect("Failed to find out_dir in args. Please open an issue"));
+    let mut out_dir = PathBuf::from(out_dir?);
     while !out_dir.ends_with("target") {
         if !out_dir.pop() {
             // We ran out of directories...
-            panic!("Failed to find project root directory! Please open an issue");
+            return None;
         }
     }
 
     out_dir.pop();
 
-    out_dir
+    Some(out_dir)
 }
 
 
