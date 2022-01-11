@@ -78,7 +78,7 @@ use proc_macro2::{Ident, Span, TokenStream as TokenStream2};
 use quote::{quote, ToTokens};
 use std::env;
 use serde::Deserialize;
-use std::path::PathBuf;
+use std::path::{PathBuf, Path};
 use std::collections::HashMap;
 use heck::ToShoutySnekCase;
 
@@ -100,8 +100,12 @@ pub fn toml_config(_attr: TokenStream, item: TokenStream) -> TokenStream {
         .expect("Failed to parse configuration structure!");
 
     let root_path = find_root_path();
+    let mut cfg_path = root_path.clone();
+    cfg_path.push("cfg.toml");
 
-    let cfg = load_crate_cfg(root_path)
+    let maybe_cfg = load_crate_cfg(&cfg_path);
+    let got_cfg = maybe_cfg.is_some();
+    let cfg = maybe_cfg
         .unwrap_or_else(|| Defn::default());
 
     let mut struct_defn_fields = TokenStream2::new();
@@ -148,6 +152,15 @@ pub fn toml_config(_attr: TokenStream, item: TokenStream) -> TokenStream {
         .parse()
         .expect("NO NOT THE SHOUTY SNAKE");
 
+    let hack_retrigger = if got_cfg {
+        let cfg_path = format!("{}", cfg_path.display());
+        quote! {
+            const _: &[u8] = include_bytes!(#cfg_path);
+        }
+    } else {
+        quote! { }
+    };
+
     quote! {
         pub struct #struct_ident {
             #struct_defn_fields
@@ -156,13 +169,15 @@ pub fn toml_config(_attr: TokenStream, item: TokenStream) -> TokenStream {
         pub const #shouty_snek: #struct_ident = #struct_ident {
             #struct_inst_fields
         };
+
+        mod toml_cfg_hack {
+            #hack_retrigger
+        }
     }.into()
 }
 
 
-fn load_crate_cfg(mut path: PathBuf) -> Option<Defn> {
-    path.push("cfg.toml");
-
+fn load_crate_cfg(path: &Path) -> Option<Defn> {
     let contents = std::fs::read_to_string(&path).ok()?;
     let parsed = toml::from_str::<Config>(&contents).ok()?;
     let name = env::var("CARGO_PKG_NAME").ok()?;
