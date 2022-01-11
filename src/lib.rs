@@ -212,7 +212,7 @@ fn load_crate_cfg(path: &Path) -> Option<Defn> {
     parsed.crates.get(&name).cloned()
 }
 
-// From `
+// From https://stackoverflow.com/q/60264534
 fn find_root_path() -> Option<PathBuf> {
     // First we get the arguments for the rustc invocation
     let mut args = std::env::args();
