@@ -15,7 +15,7 @@ Rough ideas:
 buffer_size = 4096
 
 [lib-two]
-greeting = "Guten tag!"
+greeting = "Guten Tag!"
 ```
 
 ## In the library
@@ -67,5 +67,5 @@ $ cargo run
     Finished dev [unoptimized + debuginfo] target(s) in 0.30s
      Running `target/debug/application`
 4096
-Guten tag!
+Guten Tag!
 ```
