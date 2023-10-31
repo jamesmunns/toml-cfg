@@ -2,6 +2,8 @@
 
 [lib-one]
 buffer_size = 4096
+choice = 2
+other_choice = "Bar"
 
 [lib-two]
 greeting = "Guten tag!"
