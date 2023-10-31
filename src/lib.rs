@@ -86,14 +86,14 @@
 //! ```
 //!
 
+use heck::ToShoutySnekCase;
 use proc_macro::TokenStream;
 use proc_macro2::{Ident, Span, TokenStream as TokenStream2};
-use quote::{quote, ToTokens};
-use std::env;
+use quote::{format_ident, quote, ToTokens};
 use serde::Deserialize;
-use std::path::{PathBuf, Path};
 use std::collections::HashMap;
-use heck::ToShoutySnekCase;
+use std::env;
+use std::path::{Path, PathBuf};
 
 #[derive(Deserialize, Clone, Debug)]
 struct Config {
@@ -109,8 +109,8 @@ struct Defn {
 
 #[proc_macro_attribute]
 pub fn toml_config(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    let struct_defn = syn::parse::<syn::ItemStruct>(item)
-        .expect("Failed to parse configuration structure!");
+    let struct_defn =
+        syn::parse::<syn::ItemStruct>(item).expect("Failed to parse configuration structure!");
 
     let require_cfg_present = if let Ok(val) = env::var("TOML_CFG") {
         val.contains("require_cfg_present")
@@ -126,30 +126,35 @@ pub fn toml_config(_attr: TokenStream, item: TokenStream) -> TokenStream {
         Some(x)
     });
 
-    let maybe_cfg = cfg_path.as_ref().and_then(|c| {
-        load_crate_cfg(&c)
-    });
+    let maybe_cfg = cfg_path.as_ref().and_then(|c| load_crate_cfg(&c));
     let got_cfg = maybe_cfg.is_some();
     if require_cfg_present {
-        assert!(got_cfg, "TOML_CFG=require_cfg_present set, but valid config not found!")
+        assert!(
+            got_cfg,
+            "TOML_CFG=require_cfg_present set, but valid config not found!"
+        )
     }
-    let cfg = maybe_cfg
-        .unwrap_or_else(|| Defn::default());
+    let cfg = maybe_cfg.unwrap_or_else(|| Defn::default());
 
     let mut struct_defn_fields = TokenStream2::new();
     let mut struct_inst_fields = TokenStream2::new();
 
     for field in struct_defn.fields {
-        let ident = field.ident.expect("Failed to find field identifier. Don't use this on a tuple struct.");
+        let ident = field
+            .ident
+            .clone()
+            .expect("Failed to find field identifier. Don't use this on a tuple struct.");
 
         // Determine the default value, declared using the `#[default(...)]` syntax
-        let default = field.attrs.iter().find(|a| {
-            a.path.get_ident() == Some(&Ident::new("default", Span::call_site()))
-        }).expect(&format!(
-            "Failed to find `#[default(...)]` attribute for field `{}`.",
-            ident.to_string(),
-            )
-        );
+        let default = field
+            .attrs
+            .iter()
+            .find(|a| a.path.get_ident() == Some(&Ident::new("default", Span::call_site())))
+            .expect(&format!(
+                "Failed to find `#[default(...)]` attribute for field `{}`.",
+                ident.to_string(),
+            ))
+            .clone();
 
         let ty = field.ty;
 
@@ -157,20 +162,45 @@ pub fn toml_config(_attr: TokenStream, item: TokenStream) -> TokenStream {
         let val = match cfg.vals.get(&ident.to_string()) {
             Some(t) => {
                 let t_string = t.to_string();
-                t_string.parse().expect(
-                    &format!("Failed to parse `{}` as a valid token!", &t_string)
-                )
+                let value: TokenStream2 = t_string.parse().expect(&format!(
+                    "Failed to parse `{}` as a valid token!",
+                    &t_string
+                ));
+
+                let default_value = default.tokens.to_string();
+
+                let is_enum = default_value.contains("::")
+                    && default_value
+                        .starts_with(&format!("({} ::", ty.to_token_stream().to_string()));
+
+                if is_enum {
+                    let value_string = format_ident!(
+                        "{}",
+                        t.as_str().expect(&format!(
+                            "Failed to parse `{}` as a valid string!",
+                            &t_string
+                        ))
+                    );
+                    quote! { #ty::#value_string }
+                } else {
+                    quote! { #value }
+                }
             }
-            None => default.tokens.clone(),
+            None => {
+                let default = &default.tokens;
+                quote! { #default }
+            }
         };
 
         quote! {
             pub #ident: #ty,
-        }.to_tokens(&mut struct_defn_fields);
+        }
+        .to_tokens(&mut struct_defn_fields);
 
         quote! {
             #ident: #val,
-        }.to_tokens(&mut struct_inst_fields);
+        }
+        .to_tokens(&mut struct_inst_fields);
     }
 
     let struct_ident = struct_defn.ident;
@@ -186,7 +216,7 @@ pub fn toml_config(_attr: TokenStream, item: TokenStream) -> TokenStream {
             const _: &[u8] = include_bytes!(#cfg_path);
         }
     } else {
-        quote! { }
+        quote! {}
     };
 
     quote! {
@@ -201,9 +231,9 @@ pub fn toml_config(_attr: TokenStream, item: TokenStream) -> TokenStream {
         mod toml_cfg_hack {
             #hack_retrigger
         }
-    }.into()
+    }
+    .into()
 }
-
 
 fn load_crate_cfg(path: &Path) -> Option<Defn> {
     let contents = std::fs::read_to_string(&path).ok()?;
@@ -238,5 +268,3 @@ fn find_root_path() -> Option<PathBuf> {
 
     Some(out_dir)
 }
-
-
