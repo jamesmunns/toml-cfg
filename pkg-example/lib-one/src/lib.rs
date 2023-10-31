@@ -28,10 +28,15 @@ pub struct Config {
     #[default(32)]
     buffer_size: usize,
 
-    #[default(Choice::A)]
-    #[convert(Choice::from_int)]
-    choice: Choice,
+    #[default(Choice::A as usize)]
+    choice: usize,
 
     #[default(OtherChoice::Foo)]
     other_choice: OtherChoice,
+}
+
+impl Config {
+    pub const fn choice(&self) -> Choice {
+        Choice::from_int(self.choice)
+    }
 }

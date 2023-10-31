@@ -139,7 +139,7 @@ pub fn toml_config(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let mut struct_defn_fields = TokenStream2::new();
     let mut struct_inst_fields = TokenStream2::new();
 
-    for mut field in struct_defn.fields {
+    for field in struct_defn.fields {
         let ident = field
             .ident
             .clone()
@@ -156,13 +156,6 @@ pub fn toml_config(_attr: TokenStream, item: TokenStream) -> TokenStream {
             ))
             .clone();
 
-        // Pop `convert` attribute if present
-        let converter = field
-            .attrs
-            .iter()
-            .position(|a| a.path.get_ident() == Some(&Ident::new("convert", Span::call_site())))
-            .map(|pos| field.attrs.remove(pos));
-
         let ty = field.ty;
 
         // Is this field overridden?
@@ -174,27 +167,23 @@ pub fn toml_config(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     &t_string
                 ));
 
-                if let Some(converter_path) = converter.map(|c| c.tokens) {
-                    quote! { #converter_path(#value) }
+                let default_value = default.tokens.to_string();
+
+                let is_enum = default_value.contains("::")
+                    && default_value
+                        .starts_with(&format!("({} ::", ty.to_token_stream().to_string()));
+
+                if is_enum {
+                    let value_string = format_ident!(
+                        "{}",
+                        t.as_str().expect(&format!(
+                            "Failed to parse `{}` as a valid string!",
+                            &t_string
+                        ))
+                    );
+                    quote! { #ty::#value_string }
                 } else {
-                    let default_value = default.tokens.to_string();
-
-                    let is_enum = default_value.contains("::")
-                        && default_value
-                            .starts_with(&format!("({} ::", ty.to_token_stream().to_string()));
-
-                    if is_enum {
-                        let value_string = format_ident!(
-                            "{}",
-                            t.as_str().expect(&format!(
-                                "Failed to parse `{}` as a valid string!",
-                                &t_string
-                            ))
-                        );
-                        quote! { #ty::#value_string }
-                    } else {
-                        quote! { #value }
-                    }
+                    quote! { #value }
                 }
             }
             None => {
