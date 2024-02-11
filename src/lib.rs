@@ -29,7 +29,9 @@
 //!     #[default(32)]
 //!     buffer_size: usize,
 //! }
+//! ```
 //!
+//!```rust
 //! // lib-two
 //! #[toml_cfg::toml_config]
 //! pub struct Config {
