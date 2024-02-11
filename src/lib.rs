@@ -90,12 +90,13 @@
 
 use heck::ToShoutySnekCase;
 use proc_macro::TokenStream;
-use proc_macro2::{Ident, Span, TokenStream as TokenStream2};
+use proc_macro2::TokenStream as TokenStream2;
 use quote::{quote, ToTokens};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::env;
 use std::path::{Path, PathBuf};
+use syn::Expr;
 
 #[derive(Deserialize, Clone, Debug)]
 struct Config {
@@ -150,7 +151,12 @@ pub fn toml_config(_attr: TokenStream, item: TokenStream) -> TokenStream {
         let default = field
             .attrs
             .iter()
-            .find(|a| a.path.get_ident() == Some(&Ident::new("default", Span::call_site())))
+            .find_map(|a| {
+                a.path()
+                    .is_ident("default")
+                    .then(|| a.parse_args::<Expr>().ok())
+            })
+            .flatten()
             .expect(&format!(
                 "Failed to find `#[default(...)]` attribute for field `{}`.",
                 ident.to_string(),
@@ -162,12 +168,12 @@ pub fn toml_config(_attr: TokenStream, item: TokenStream) -> TokenStream {
         let val = match cfg.vals.get(&ident.to_string()) {
             Some(t) => {
                 let t_string = t.to_string();
-                t_string.parse().expect(&format!(
+                syn::parse_str::<Expr>(&t_string).expect(&format!(
                     "Failed to parse `{}` as a valid token!",
                     &t_string
                 ))
             }
-            None => default.tokens.clone(),
+            None => default,
         };
 
         quote! {
