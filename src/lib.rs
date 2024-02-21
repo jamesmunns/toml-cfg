@@ -194,13 +194,14 @@ pub fn toml_config(_attr: TokenStream, item: TokenStream) -> TokenStream {
         .parse()
         .expect("NO NOT THE SHOUTY SNAKE");
 
-    let hack_retrigger = if let Some(cfg_path) = cfg_path {
-        let cfg_path = format!("{}", cfg_path.display());
-        quote! {
-            const _: &[u8] = include_bytes!(#cfg_path);
+    let hack_retrigger = match (got_cfg, cfg_path) {
+        (false, _) | (true, None) => quote! {},
+        (true, Some(cfg_path)) => {
+            let cfg_path = format!("{}", cfg_path.display());
+            quote! {
+                const _: &[u8] = include_bytes!(#cfg_path);
+            }
         }
-    } else {
-        quote! {}
     };
 
     quote! {
